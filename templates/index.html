@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mumbai Route Comparison Simulator</title>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <div class="controls">
+            <h2>Route Finder</h2>
+            
+            <div class="control-group">
+                <label for="start-location">Start Location:</label>
+                <input type="text" id="start-location" value="IIT Bombay" placeholder="e.g., IIT Bombay">
+            </div>
+
+            <div class="control-group">
+                <label for="end-location">End Location:</label>
+                <input type="text" id="end-location" value="Gateway of India" placeholder="e.g., Gateway of India">
+            </div>
+
+            <div class="control-group">
+                <label for="algo-select">Algorithm Info:</label>
+                <select name="algorithms" id="algo-select">
+                    <option value="a_star">A* (A-Star)</option>
+                    <option value="dijkstra">Dijkstra</option>
+                    <option value="greedy_bfs">Greedy BFS</option>
+                    <option value="bfs">BFS</option>
+                    <option value="dfs">DFS</option>
+                </select>
+            </div>
+
+            <div class="control-group info-box">
+                <p id="algo-description">Select an algorithm to learn how it works.</p>
+            </div>
+            
+            <button id="find-route-btn">Compare Algorithms</button>
+
+            <div class="control-group stats-box">
+                <h3>Results</h3>
+                <table id="results-table">
+                    <thead>
+                        <tr>
+                            <th>Algorithm</th>
+                            <th>Distance (km)</th>
+                            <th>Time (ms)</th>
+                            <th>Nodes Visited</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        </tbody>
+                </table>
+                <p class="summary"><strong>Fastest Algorithm:</strong> <span id="stats-fastest">--</span></p>
+            </div>
+        </div>
+        
+        <div class="main-content">
+            <div id="map-container"></div>
+            <p id="status"></p>
+        </div>
+    </div>
+    
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
