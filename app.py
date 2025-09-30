@@ -15,7 +15,6 @@ def load_graph():
     """Loads the Mumbai map graph from a file for fast local queries."""
     global GRAPH
     graph_file = "mumbai.graphml"
-    # This check ensures we only load from disk once
     if GRAPH is None:
         try:
             print(f"--- Loading cached Mumbai map from {graph_file}... ---")
@@ -30,88 +29,136 @@ def load_graph():
 
 # --- Helper and Algorithm Functions ---
 def reconstruct_path(came_from, current):
-    path = [current];
+    path = [current]
     while current in came_from:
-        current = came_from[current]; path.append(current)
+        current = came_from[current]
+        path.append(current)
     return path[::-1]
 
 def calculate_path_distance(graph, path):
-    return sum(ox.distance.great_circle(graph.nodes[u]['y'], graph.nodes[u]['x'], graph.nodes[v]['y'], graph.nodes[v]['x']) for u, v in zip(path[:-1], path[1:]))
+    return sum(
+        ox.distance.great_circle(
+            graph.nodes[u]['y'], graph.nodes[u]['x'],
+            graph.nodes[v]['y'], graph.nodes[v]['x']
+        )
+        for u, v in zip(path[:-1], path[1:])
+    )
 
 def a_star_solve(graph, start_node, end_node):
-    def heuristic(u, v): return ox.distance.great_circle(graph.nodes[u]['y'], graph.nodes[u]['x'], graph.nodes[v]['y'], graph.nodes[v]['x'])
-    pq = [(heuristic(start_node, end_node), start_node)]; g_scores = {start_node: 0}; came_from = {}; visited_nodes = []
+    def heuristic(u, v):
+        return ox.distance.great_circle(
+            graph.nodes[u]['y'], graph.nodes[u]['x'],
+            graph.nodes[v]['y'], graph.nodes[v]['x']
+        )
+    pq = [(heuristic(start_node, end_node), start_node)]
+    g_scores = {start_node: 0}
+    came_from = {}
+    visited_nodes = []
     while pq:
         _, current = heapq.heappop(pq)
-        if current in visited_nodes: continue
+        if current in visited_nodes:
+            continue
         visited_nodes.append(current)
         if current == end_node:
-            path = reconstruct_path(came_from, current); dist = calculate_path_distance(graph, path)
+            path = reconstruct_path(came_from, current)
+            dist = calculate_path_distance(graph, path)
             return path, dist, visited_nodes
         for neighbor in graph.neighbors(current):
             tentative_g_score = g_scores.get(current, float('inf')) + graph.edges[current, neighbor, 0].get('length', 1)
             if tentative_g_score < g_scores.get(neighbor, float('inf')):
-                came_from[neighbor] = current; g_scores[neighbor] = tentative_g_score
-                f_score = tentative_g_score + heuristic(neighbor, end_node); heapq.heappush(pq, (f_score, neighbor))
+                came_from[neighbor] = current
+                g_scores[neighbor] = tentative_g_score
+                f_score = tentative_g_score + heuristic(neighbor, end_node)
+                heapq.heappush(pq, (f_score, neighbor))
     return [], 0, visited_nodes
 
 def dijkstra_solve(graph, start_node, end_node):
-    pq = [(0, start_node)]; came_from = {}; distances = {start_node: 0}; visited_nodes = []
+    pq = [(0, start_node)]
+    came_from = {}
+    distances = {start_node: 0}
+    visited_nodes = []
     while pq:
         dist, current = heapq.heappop(pq)
-        if dist > distances.get(current, float('inf')): continue
+        if dist > distances.get(current, float('inf')):
+            continue
         visited_nodes.append(current)
         if current == end_node:
-            path = reconstruct_path(came_from, current); dist = calculate_path_distance(graph, path)
+            path = reconstruct_path(came_from, current)
+            dist = calculate_path_distance(graph, path)
             return path, dist, visited_nodes
         for neighbor in graph.neighbors(current):
             new_dist = dist + graph.edges[current, neighbor, 0].get('length', 1)
             if new_dist < distances.get(neighbor, float('inf')):
-                came_from[neighbor] = current; distances[neighbor] = new_dist; heapq.heappush(pq, (new_dist, neighbor))
+                came_from[neighbor] = current
+                distances[neighbor] = new_dist
+                heapq.heappush(pq, (new_dist, neighbor))
     return [], 0, visited_nodes
 
 def bfs_solve(graph, start_node, end_node):
-    queue = collections.deque([start_node]); visited = {start_node}; came_from = {}; visited_nodes_in_order = []
+    queue = collections.deque([start_node])
+    visited = {start_node}
+    came_from = {}
+    visited_nodes_in_order = []
     while queue:
         current = queue.popleft()
         visited_nodes_in_order.append(current)
         if current == end_node:
-            path = reconstruct_path(came_from, current); dist = calculate_path_distance(graph, path)
+            path = reconstruct_path(came_from, current)
+            dist = calculate_path_distance(graph, path)
             return path, dist, visited_nodes_in_order
         for neighbor in graph.neighbors(current):
             if neighbor not in visited:
-                visited.add(neighbor); came_from[neighbor] = current; queue.append(neighbor)
+                visited.add(neighbor)
+                came_from[neighbor] = current
+                queue.append(neighbor)
     return [], 0, visited_nodes_in_order
 
 def dfs_solve(graph, start_node, end_node):
-    stack = [start_node]; visited = set(); came_from = {}; visited_nodes_in_order = []
+    stack = [start_node]
+    visited = set()
+    came_from = {}
+    visited_nodes_in_order = []
     while stack:
         current = stack.pop()
-        if current in visited: continue
+        if current in visited:
+            continue
         visited.add(current)
         visited_nodes_in_order.append(current)
         if current == end_node:
-            path = reconstruct_path(came_from, current); dist = calculate_path_distance(graph, path)
+            path = reconstruct_path(came_from, current)
+            dist = calculate_path_distance(graph, path)
             return path, dist, visited_nodes_in_order
         for neighbor in reversed(list(graph.neighbors(current))):
             if neighbor not in visited:
-                came_from[neighbor] = current; stack.append(neighbor)
+                came_from[neighbor] = current
+                stack.append(neighbor)
     return [], 0, visited_nodes_in_order
 
 def greedy_bfs_solve(graph, start_node, end_node):
-    def heuristic(u, v): return ox.distance.great_circle(graph.nodes[u]['y'], graph.nodes[u]['x'], graph.nodes[v]['y'], graph.nodes[v]['x'])
-    pq = [(heuristic(start_node, end_node), start_node)]; came_from = {}; visited = {start_node}; visited_nodes_in_order = []
+    def heuristic(u, v):
+        return ox.distance.great_circle(
+            graph.nodes[u]['y'], graph.nodes[u]['x'],
+            graph.nodes[v]['y'], graph.nodes[v]['x']
+        )
+    pq = [(heuristic(start_node, end_node), start_node)]
+    came_from = {}
+    visited = {start_node}
+    visited_nodes_in_order = []
     while pq:
         _, current = heapq.heappop(pq)
-        if current in visited_nodes_in_order: continue
+        if current in visited_nodes_in_order:
+            continue
         visited_nodes_in_order.append(current)
         if current == end_node:
-            path = reconstruct_path(came_from, current); dist = calculate_path_distance(graph, path)
+            path = reconstruct_path(came_from, current)
+            dist = calculate_path_distance(graph, path)
             return path, dist, visited_nodes_in_order
         for neighbor in graph.neighbors(current):
             if neighbor not in visited:
-                visited.add(neighbor); came_from[neighbor] = current
-                priority = heuristic(neighbor, end_node); heapq.heappush(pq, (priority, neighbor))
+                visited.add(neighbor)
+                came_from[neighbor] = current
+                priority = heuristic(neighbor, end_node)
+                heapq.heappush(pq, (priority, neighbor))
     return [], 0, visited_nodes_in_order
 
 # --- Flask Routes ---
@@ -121,23 +168,21 @@ def index():
 
 @app.route('/api/compare_routes')
 def compare_routes():
-    # Ensure the graph is loaded before processing the request.
     load_graph()
-
     start_query = request.args.get('start', 'IIT Bombay')
     end_query = request.args.get('end', 'Bandra Fort')
-    
+
     try:
         local_graph = GRAPH
-        
         print(f"--- Geocoding '{start_query}' and '{end_query}' within Mumbai... ---")
-        start_coords = ox.geocode(f"{start_query}, Mumbai, India")
-        end_coords = ox.geocode(f"{end_query}, Mumbai, India")
+        
+        # Restrict geocoding to Mumbai
+        start_coords = ox.geocode(f"{start_query}, Mumbai, Maharashtra, India")
+        end_coords = ox.geocode(f"{end_query}, Mumbai, Maharashtra, India")
         
         start_node = ox.distance.nearest_nodes(local_graph, start_coords[1], start_coords[0])
         end_node = ox.distance.nearest_nodes(local_graph, end_coords[1], end_coords[0])
-        
-        # --- THIS IS THE COMPLETE LIST OF ALGORITHMS ---
+
         solvers = {
             'A* (A-Star)': a_star_solve,
             'Dijkstra': dijkstra_solve,
@@ -145,27 +190,34 @@ def compare_routes():
             'BFS': bfs_solve,
             'DFS': dfs_solve
         }
-        
+
         results, best_path, min_distance, animation_visited_nodes = [], [], float('inf'), []
         for name, solver_func in solvers.items():
             start_time = time.time()
             path, distance, visited_nodes = solver_func(local_graph, start_node, end_node)
             end_time = time.time()
             if path:
-                results.append({'algo': name, 'distance': round(distance / 1000, 2), 'time': round((end_time - start_time) * 1000, 2), 'visited': len(visited_nodes)})
+                results.append({
+                    'algo': name,
+                    'distance': round(distance / 1000, 2),
+                    'time': round((end_time - start_time) * 1000, 2),
+                    'visited': len(visited_nodes)
+                })
                 if name in ['A* (A-Star)', 'Dijkstra', 'BFS'] and distance < min_distance and distance > 0:
                     min_distance, best_path, animation_visited_nodes = distance, path, visited_nodes
-        
+
         fastest_algo_name = min(results, key=lambda x: x['time'])['algo'] if results else None
-        
+
         animation_data = {}
         if best_path:
             nodes = local_graph.nodes(data=True)
-            min_lon = min(d['x'] for _, d in nodes); max_lon = max(d['x'] for _, d in nodes)
-            min_lat = min(d['y'] for _, d in nodes); max_lat = max(d['y'] for _, d in nodes)
-            
+            min_lat = min(d['y'] for _, d in nodes)
+            max_lat = max(d['y'] for _, d in nodes)
+            min_lon = min(d['x'] for _, d in nodes)
+            max_lon = max(d['x'] for _, d in nodes)
+
             animation_data = {
-                'bounds': [[min_lon, max_lon], [min_lat, max_lat]],
+                'bounds': [[min_lat, min_lon], [max_lat, max_lon]],
                 'visited_coords': [[local_graph.nodes[node]['y'], local_graph.nodes[node]['x']] for node in animation_visited_nodes],
                 'path_coords': [[local_graph.nodes[node]['y'], local_graph.nodes[node]['x']] for node in best_path]
             }
@@ -177,5 +229,4 @@ def compare_routes():
         return jsonify({'error': f"Could not find one or both locations in the Mumbai map. Please try again. Error: {e}"}), 400
 
 if __name__ == '__main__':
-    # We don't call load_graph() here because the first request will trigger it.
     app.run(debug=True)
