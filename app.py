@@ -4,28 +4,41 @@ import networkx as nx
 import time
 import heapq
 import collections
+import os
+import requests
 
 # Initialize Flask App
 app = Flask(__name__)
-
-# --- Global graph for cached Mumbai map ---
 GRAPH = None
 
 def load_graph():
-    """Loads the Mumbai map graph from a file for fast local queries."""
+    """
+    Loads the map from a local file, or downloads it from a URL if not found.
+    """
     global GRAPH
     graph_file = "mumbai.graphml"
+    
+    # --- PASTE THE URL YOU COPIED FROM YOUR GITHUB RELEASE HERE ---
+    file_url = "https://github.com/boltcannon/pathfinding-simulatorMumbai/releases/download/v1.0/mumbai.graphml"
+
     if GRAPH is None:
         try:
-            print(f"--- Loading cached Mumbai map from {graph_file}... ---")
+            print(f"--- Loading map data from {graph_file}... ---")
             GRAPH = ox.load_graphml(graph_file)
-            print("--- Mumbai map data loaded successfully from file. ---")
+            print("--- Map data loaded successfully from local file. ---")
         except FileNotFoundError:
-            place = "Mumbai, Maharashtra, India"
-            print(f"--- Map file not found. Downloading data for {place}... ---")
-            GRAPH = ox.graph_from_place(place, network_type='drive')
-            ox.save_graphml(GRAPH, filepath=graph_file)
-            print(f"--- Map data downloaded and saved to {graph_file}. ---")
+            print(f"--- Map file not found. Downloading from {file_url}... ---")
+            if file_url == "PASTE_THE_URL_YOU_COPIED_FROM_GITHUB_HERE":
+                raise Exception("URL for map file not provided in app.py. Please paste the link from your GitHub Release.")
+            
+            response = requests.get(file_url)
+            response.raise_for_status()
+            with open(graph_file, "wb") as f:
+                f.write(response.content)
+            
+            print("--- Download complete. Loading graph from file... ---")
+            GRAPH = ox.load_graphml(graph_file)
+            print("--- Map data loaded successfully. ---")
 
 # --- Helper and Algorithm Functions ---
 def reconstruct_path(came_from, current):
@@ -125,20 +138,23 @@ def compare_routes():
     end_query = request.args.get('end', 'Bandra Fort')
     
     try:
-        # --- SIMPLIFIED LOGIC: ALWAYS USE THE CACHED MUMBAI GRAPH ---
+        if GRAPH is None:
+             return jsonify({'error': "Map data is still loading, please try again in a moment."}), 503
+
+        local_graph = GRAPH
         print(f"--- Geocoding '{start_query}' and '{end_query}' within Mumbai... ---")
         start_coords = ox.geocode(f"{start_query}, Mumbai, India")
         end_coords = ox.geocode(f"{end_query}, Mumbai, India")
-        
-        # Use the pre-loaded GRAPH object for all calculations
-        local_graph = GRAPH
-        
         start_node = ox.distance.nearest_nodes(local_graph, start_coords[1], start_coords[0])
         end_node = ox.distance.nearest_nodes(local_graph, end_coords[1], end_coords[0])
         
+        # --- THIS DICTIONARY IS NOW COMPLETE ---
         solvers = {
-            'A* (A-Star)': a_star_solve, 'Dijkstra': dijkstra_solve,
-            'Greedy BFS': greedy_bfs_solve, 'BFS': bfs_solve, 'DFS': dfs_solve
+            'A* (A-Star)': a_star_solve,
+            'Dijkstra': dijkstra_solve,
+            'Greedy BFS': greedy_bfs_solve,
+            'BFS': bfs_solve,
+            'DFS': dfs_solve
         }
         
         results, best_path, min_distance, animation_visited_nodes = [], [], float('inf'), []
@@ -158,18 +174,16 @@ def compare_routes():
             nodes = local_graph.nodes(data=True)
             min_lon = min(d['x'] for _, d in nodes); max_lon = max(d['x'] for _, d in nodes)
             min_lat = min(d['y'] for _, d in nodes); max_lat = max(d['y'] for _, d in nodes)
-            
             animation_data = {
                 'bounds': [[min_lon, max_lon], [min_lat, max_lat]],
                 'visited_coords': [[local_graph.nodes[node]['y'], local_graph.nodes[node]['x']] for node in animation_visited_nodes],
                 'path_coords': [[local_graph.nodes[node]['y'], local_graph.nodes[node]['x']] for node in best_path]
             }
-
         return jsonify({'results': results, 'animation_data': animation_data, 'fastest_algo': fastest_algo_name})
 
     except Exception as e:
         print(f"An error occurred: {e}")
-        return jsonify({'error': f"Could not find one or both locations in the Mumbai map. Please try again. Error: {e}"}), 400
+        return jsonify({'error': f"Could not find one or both locations in the Mumbai map. Error: {e}"}), 400
 
 if __name__ == '__main__':
     load_graph()
