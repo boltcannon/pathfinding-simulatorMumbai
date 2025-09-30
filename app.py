@@ -10,27 +10,22 @@ app = Flask(__name__)
 
 # --- Global graph for cached Mumbai map ---
 GRAPH = None
-GRAPH_BOUNDS = None
 
 def load_graph():
     """Loads the Mumbai map graph from a file for fast local queries."""
-    global GRAPH, GRAPH_BOUNDS
+    global GRAPH
     graph_file = "mumbai.graphml"
     if GRAPH is None:
         try:
             print(f"--- Loading cached Mumbai map from {graph_file}... ---")
             GRAPH = ox.load_graphml(graph_file)
+            print("--- Mumbai map data loaded successfully from file. ---")
         except FileNotFoundError:
             place = "Mumbai, Maharashtra, India"
             print(f"--- Map file not found. Downloading data for {place}... ---")
             GRAPH = ox.graph_from_place(place, network_type='drive')
             ox.save_graphml(GRAPH, filepath=graph_file)
-        
-        nodes = GRAPH.nodes(data=True)
-        min_lon = min(d['x'] for _, d in nodes); max_lon = max(d['x'] for _, d in nodes)
-        min_lat = min(d['y'] for _, d in nodes); max_lat = max(d['y'] for _, d in nodes)
-        GRAPH_BOUNDS = {'north': max_lat, 'south': min_lat, 'east': max_lon, 'west': min_lon}
-        print("--- Mumbai map data loaded successfully. ---")
+            print(f"--- Map data downloaded and saved to {graph_file}. ---")
 
 # --- Helper and Algorithm Functions ---
 def reconstruct_path(came_from, current):
@@ -126,27 +121,27 @@ def index():
 
 @app.route('/api/compare_routes')
 def compare_routes():
-    # ... (The logic for geocoding and choosing the graph remains the same)
     start_query = request.args.get('start', 'IIT Bombay')
     end_query = request.args.get('end', 'Bandra Fort')
+    
     try:
+        # --- SIMPLIFIED LOGIC: ALWAYS USE THE CACHED MUMBAI GRAPH ---
+        print(f"--- Geocoding '{start_query}' and '{end_query}' within Mumbai... ---")
         start_coords = ox.geocode(f"{start_query}, Mumbai, India")
         end_coords = ox.geocode(f"{end_query}, Mumbai, India")
+        
+        # Use the pre-loaded GRAPH object for all calculations
         local_graph = GRAPH
+        
         start_node = ox.distance.nearest_nodes(local_graph, start_coords[1], start_coords[0])
         end_node = ox.distance.nearest_nodes(local_graph, end_coords[1], end_coords[0])
         
-        # --- THIS DICTIONARY IS NOW COMPLETE AGAIN ---
         solvers = {
-            'A* (A-Star)': a_star_solve,
-            'Dijkstra': dijkstra_solve,
-            'Greedy BFS': greedy_bfs_solve,
-            'BFS': bfs_solve,
-            'DFS': dfs_solve
+            'A* (A-Star)': a_star_solve, 'Dijkstra': dijkstra_solve,
+            'Greedy BFS': greedy_bfs_solve, 'BFS': bfs_solve, 'DFS': dfs_solve
         }
         
-        results = []
-        best_path, min_distance, animation_visited_nodes = [], float('inf'), []
+        results, best_path, min_distance, animation_visited_nodes = [], [], float('inf'), []
         for name, solver_func in solvers.items():
             start_time = time.time()
             path, distance, visited_nodes = solver_func(local_graph, start_node, end_node)
@@ -156,19 +151,14 @@ def compare_routes():
                 if name in ['A* (A-Star)', 'Dijkstra', 'BFS'] and distance < min_distance and distance > 0:
                     min_distance, best_path, animation_visited_nodes = distance, path, visited_nodes
         
-        # --- NEW: Find the fastest algorithm ---
-        fastest_algo_name = None
-        if results:
-            # Sort results by time and get the name of the first one
-            fastest_result = min(results, key=lambda x: x['time'])
-            fastest_algo_name = fastest_result['algo']
-
+        fastest_algo_name = min(results, key=lambda x: x['time'])['algo'] if results else None
+        
         animation_data = {}
         if best_path:
-            # ... (animation data preparation is the same)
             nodes = local_graph.nodes(data=True)
-            min_lon,max_lon = min(d['x'] for _,d in nodes), max(d['x'] for _,d in nodes)
-            min_lat,max_lat = min(d['y'] for _,d in nodes), max(d['y'] for _,d in nodes)
+            min_lon = min(d['x'] for _, d in nodes); max_lon = max(d['x'] for _, d in nodes)
+            min_lat = min(d['y'] for _, d in nodes); max_lat = max(d['y'] for _, d in nodes)
+            
             animation_data = {
                 'bounds': [[min_lon, max_lon], [min_lat, max_lat]],
                 'visited_coords': [[local_graph.nodes[node]['y'], local_graph.nodes[node]['x']] for node in animation_visited_nodes],
@@ -179,7 +169,7 @@ def compare_routes():
 
     except Exception as e:
         print(f"An error occurred: {e}")
-        return jsonify({'error': f"Could not find one or both locations in the Mumbai map. Error: {e}"}), 400
+        return jsonify({'error': f"Could not find one or both locations in the Mumbai map. Please try again. Error: {e}"}), 400
 
 if __name__ == '__main__':
     load_graph()
