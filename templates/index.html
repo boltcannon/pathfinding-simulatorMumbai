@@ -5,7 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Mumbai Route Comparison Simulator</title>
     
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
     
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
@@ -53,7 +54,7 @@
                         </tr>
                     </thead>
                     <tbody>
-                        </tbody>
+                    </tbody>
                 </table>
                 <p class="summary"><strong>Fastest Algorithm:</strong> <span id="stats-fastest">--</span></p>
             </div>
@@ -65,8 +66,28 @@
         </div>
     </div>
     
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
     
+    <script>
+        // Algorithm descriptions
+        const algoDescriptions = {
+            "a_star": "A* (A-Star): Uses heuristics + cost to find optimal path efficiently.",
+            "dijkstra": "Dijkstra: Finds shortest path by exploring all possible nodes.",
+            "greedy_bfs": "Greedy BFS: Expands node closest to goal (fast but not always optimal).",
+            "bfs": "BFS: Explores neighbors level by level, finds shortest path in unweighted graphs.",
+            "dfs": "DFS: Explores deep into one path before backtracking, not guaranteed shortest."
+        };
+
+        const algoSelect = document.getElementById("algo-select");
+        const algoDesc = document.getElementById("algo-description");
+
+        algoSelect.addEventListener("change", () => {
+            const val = algoSelect.value;
+            algoDesc.textContent = algoDescriptions[val] || "Select an algorithm to learn how it works.";
+        });
+    </script>
+
     <script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
 </html>
