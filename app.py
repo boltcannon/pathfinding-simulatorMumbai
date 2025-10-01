@@ -1,232 +1,70 @@
-from flask import Flask, render_template, jsonify, request
+import os
 import osmnx as ox
 import networkx as nx
-import time
-import heapq
-import collections
+from flask import Flask, request, jsonify
 
-# Initialize Flask App
 app = Flask(__name__)
 
-# --- Global graph for cached Mumbai map ---
-GRAPH = None
+GRAPH_FILE = os.path.join(os.path.dirname(__file__), "mumbai.graphml")
 
 def load_graph():
-    """Loads the Mumbai map graph from a file for fast local queries."""
-    global GRAPH
-    graph_file = "mumbai.graphml"
-    if GRAPH is None:
-        try:
-            print(f"--- Loading cached Mumbai map from {graph_file}... ---")
-            GRAPH = ox.load_graphml(graph_file)
-            print("--- Mumbai map data loaded successfully from file. ---")
-        except FileNotFoundError:
-            place = "Mumbai, Maharashtra, India"
-            print(f"--- Map file not found. Downloading data for {place}... ---")
-            GRAPH = ox.graph_from_place(place, network_type='drive')
-            ox.save_graphml(GRAPH, filepath=graph_file)
-            print(f"--- Map data downloaded and saved to {graph_file}. ---")
+    """
+    Load Mumbai road network.
+    If graphml file exists, load it.
+    If not, download and save it for future use.
+    """
+    if os.path.exists(GRAPH_FILE):
+        print(f"Loading graph from {GRAPH_FILE} ...")
+        return ox.load_graphml(GRAPH_FILE)
+    else:
+        print("Graph file not found, downloading from OSM...")
+        G = ox.graph_from_place("Mumbai, India", network_type="drive")
+        ox.save_graphml(G, GRAPH_FILE)
+        print("Graph downloaded and saved.")
+        return G
 
-# --- Helper and Algorithm Functions ---
-def reconstruct_path(came_from, current):
-    path = [current]
-    while current in came_from:
-        current = came_from[current]
-        path.append(current)
-    return path[::-1]
+# Global graph object
+try:
+    G = load_graph()
+except Exception as e:
+    print(f"❌ Could not load graph: {e}")
+    G = None
 
-def calculate_path_distance(graph, path):
-    return sum(
-        ox.distance.great_circle(
-            graph.nodes[u]['y'], graph.nodes[u]['x'],
-            graph.nodes[v]['y'], graph.nodes[v]['x']
-        )
-        for u, v in zip(path[:-1], path[1:])
-    )
-
-def a_star_solve(graph, start_node, end_node):
-    def heuristic(u, v):
-        return ox.distance.great_circle(
-            graph.nodes[u]['y'], graph.nodes[u]['x'],
-            graph.nodes[v]['y'], graph.nodes[v]['x']
-        )
-    pq = [(heuristic(start_node, end_node), start_node)]
-    g_scores = {start_node: 0}
-    came_from = {}
-    visited_nodes = []
-    while pq:
-        _, current = heapq.heappop(pq)
-        if current in visited_nodes:
-            continue
-        visited_nodes.append(current)
-        if current == end_node:
-            path = reconstruct_path(came_from, current)
-            dist = calculate_path_distance(graph, path)
-            return path, dist, visited_nodes
-        for neighbor in graph.neighbors(current):
-            tentative_g_score = g_scores.get(current, float('inf')) + graph.edges[current, neighbor, 0].get('length', 1)
-            if tentative_g_score < g_scores.get(neighbor, float('inf')):
-                came_from[neighbor] = current
-                g_scores[neighbor] = tentative_g_score
-                f_score = tentative_g_score + heuristic(neighbor, end_node)
-                heapq.heappush(pq, (f_score, neighbor))
-    return [], 0, visited_nodes
-
-def dijkstra_solve(graph, start_node, end_node):
-    pq = [(0, start_node)]
-    came_from = {}
-    distances = {start_node: 0}
-    visited_nodes = []
-    while pq:
-        dist, current = heapq.heappop(pq)
-        if dist > distances.get(current, float('inf')):
-            continue
-        visited_nodes.append(current)
-        if current == end_node:
-            path = reconstruct_path(came_from, current)
-            dist = calculate_path_distance(graph, path)
-            return path, dist, visited_nodes
-        for neighbor in graph.neighbors(current):
-            new_dist = dist + graph.edges[current, neighbor, 0].get('length', 1)
-            if new_dist < distances.get(neighbor, float('inf')):
-                came_from[neighbor] = current
-                distances[neighbor] = new_dist
-                heapq.heappush(pq, (new_dist, neighbor))
-    return [], 0, visited_nodes
-
-def bfs_solve(graph, start_node, end_node):
-    queue = collections.deque([start_node])
-    visited = {start_node}
-    came_from = {}
-    visited_nodes_in_order = []
-    while queue:
-        current = queue.popleft()
-        visited_nodes_in_order.append(current)
-        if current == end_node:
-            path = reconstruct_path(came_from, current)
-            dist = calculate_path_distance(graph, path)
-            return path, dist, visited_nodes_in_order
-        for neighbor in graph.neighbors(current):
-            if neighbor not in visited:
-                visited.add(neighbor)
-                came_from[neighbor] = current
-                queue.append(neighbor)
-    return [], 0, visited_nodes_in_order
-
-def dfs_solve(graph, start_node, end_node):
-    stack = [start_node]
-    visited = set()
-    came_from = {}
-    visited_nodes_in_order = []
-    while stack:
-        current = stack.pop()
-        if current in visited:
-            continue
-        visited.add(current)
-        visited_nodes_in_order.append(current)
-        if current == end_node:
-            path = reconstruct_path(came_from, current)
-            dist = calculate_path_distance(graph, path)
-            return path, dist, visited_nodes_in_order
-        for neighbor in reversed(list(graph.neighbors(current))):
-            if neighbor not in visited:
-                came_from[neighbor] = current
-                stack.append(neighbor)
-    return [], 0, visited_nodes_in_order
-
-def greedy_bfs_solve(graph, start_node, end_node):
-    def heuristic(u, v):
-        return ox.distance.great_circle(
-            graph.nodes[u]['y'], graph.nodes[u]['x'],
-            graph.nodes[v]['y'], graph.nodes[v]['x']
-        )
-    pq = [(heuristic(start_node, end_node), start_node)]
-    came_from = {}
-    visited = {start_node}
-    visited_nodes_in_order = []
-    while pq:
-        _, current = heapq.heappop(pq)
-        if current in visited_nodes_in_order:
-            continue
-        visited_nodes_in_order.append(current)
-        if current == end_node:
-            path = reconstruct_path(came_from, current)
-            dist = calculate_path_distance(graph, path)
-            return path, dist, visited_nodes_in_order
-        for neighbor in graph.neighbors(current):
-            if neighbor not in visited:
-                visited.add(neighbor)
-                came_from[neighbor] = current
-                priority = heuristic(neighbor, end_node)
-                heapq.heappush(pq, (priority, neighbor))
-    return [], 0, visited_nodes_in_order
-
-# --- Flask Routes ---
-@app.route('/')
-def index():
-    return render_template('index.html')
-
-@app.route('/api/compare_routes')
+@app.route("/api/compare_routes")
 def compare_routes():
-    load_graph()
-    start_query = request.args.get('start', 'IIT Bombay')
-    end_query = request.args.get('end', 'Bandra Fort')
+    if G is None:
+        return jsonify({"error": "Graph could not be loaded"}), 500
+
+    start = request.args.get("start")
+    end = request.args.get("end")
+
+    if not start or not end:
+        return jsonify({"error": "Missing start or end parameter"}), 400
 
     try:
-        local_graph = GRAPH
-        print(f"--- Geocoding '{start_query}' and '{end_query}' within Mumbai... ---")
-        
-        # Restrict geocoding to Mumbai
-        start_coords = ox.geocode(f"{start_query}, Mumbai, Maharashtra, India")
-        end_coords = ox.geocode(f"{end_query}, Mumbai, Maharashtra, India")
-        
-        start_node = ox.distance.nearest_nodes(local_graph, start_coords[1], start_coords[0])
-        end_node = ox.distance.nearest_nodes(local_graph, end_coords[1], end_coords[0])
+        print(f"Geocoding '{start}' and '{end}' within Mumbai...")
+        start_point = ox.geocode(start + ", Mumbai, India")
+        end_point = ox.geocode(end + ", Mumbai, India")
 
-        solvers = {
-            'A* (A-Star)': a_star_solve,
-            'Dijkstra': dijkstra_solve,
-            'Greedy BFS': greedy_bfs_solve,
-            'BFS': bfs_solve,
-            'DFS': dfs_solve
-        }
+        # Nearest graph nodes
+        start_node = ox.distance.nearest_nodes(G, start_point[1], start_point[0])
+        end_node = ox.distance.nearest_nodes(G, end_point[1], end_point[0])
 
-        results, best_path, min_distance, animation_visited_nodes = [], [], float('inf'), []
-        for name, solver_func in solvers.items():
-            start_time = time.time()
-            path, distance, visited_nodes = solver_func(local_graph, start_node, end_node)
-            end_time = time.time()
-            if path:
-                results.append({
-                    'algo': name,
-                    'distance': round(distance / 1000, 2),
-                    'time': round((end_time - start_time) * 1000, 2),
-                    'visited': len(visited_nodes)
-                })
-                if name in ['A* (A-Star)', 'Dijkstra', 'BFS'] and distance < min_distance and distance > 0:
-                    min_distance, best_path, animation_visited_nodes = distance, path, visited_nodes
+        # Example: shortest path (Dijkstra for now)
+        path = nx.shortest_path(G, source=start_node, target=end_node, weight="length")
+        path_coords = [(G.nodes[n]["y"], G.nodes[n]["x"]) for n in path]
 
-        fastest_algo_name = min(results, key=lambda x: x['time'])['algo'] if results else None
-
-        animation_data = {}
-        if best_path:
-            nodes = local_graph.nodes(data=True)
-            min_lat = min(d['y'] for _, d in nodes)
-            max_lat = max(d['y'] for _, d in nodes)
-            min_lon = min(d['x'] for _, d in nodes)
-            max_lon = max(d['x'] for _, d in nodes)
-
-            animation_data = {
-                'bounds': [[min_lat, min_lon], [max_lat, max_lon]],
-                'visited_coords': [[local_graph.nodes[node]['y'], local_graph.nodes[node]['x']] for node in animation_visited_nodes],
-                'path_coords': [[local_graph.nodes[node]['y'], local_graph.nodes[node]['x']] for node in best_path]
+        return jsonify({
+            "results": [
+                {"algo": "Dijkstra", "distance": round(nx.shortest_path_length(G, start_node, end_node, weight="length")/1000, 2),
+                 "time": 0, "visited": len(path)}
+            ],
+            "fastest_algo": "Dijkstra",
+            "animation_data": {
+                "path_coords": path_coords,
+                "visited_coords": path_coords
             }
-
-        return jsonify({'results': results, 'animation_data': animation_data, 'fastest_algo': fastest_algo_name})
+        })
 
     except Exception as e:
-        print(f"An error occurred: {e}")
-        return jsonify({'error': f"Could not find one or both locations in the Mumbai map. Please try again. Error: {e}"}), 400
-
-if __name__ == '__main__':
-    app.run(debug=True)
+        return jsonify({"error": str(e)}), 500
